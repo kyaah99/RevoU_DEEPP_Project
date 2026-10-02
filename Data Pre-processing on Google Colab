@@ -1,0 +1,47 @@
+  # 1. Mount Google Drive onto Python
+	
+	from google.colab import drive
+	drive.mount('/content/drive')
+	
+	# 2. Unzip and list the CSV files
+	
+	#file path: /content/drive/MyDrive/Sephora Dataset/archive.zip
+	# Unzip the file from Google Drive into Google Colab
+	!unzip -q "/content/drive/MyDrive/Sephora Dataset/archive.zip" -d sephora_data
+	# List extracted CSV files
+	!ls sephora_data
+	
+	# 3. Combine all "reviews" CSV files and export both "product_info" and "reviews" CSV files into Big Query project
+	
+	import glob
+	import pandas as pd
+	from google.colab import auth
+	
+	# Step 1: Set updated Project ID & Dataset
+	project_id = "revou-sql-class-jun26-510107"
+	dataset_id = "sephora_dataset"
+	
+	# Step 2: Load Product Info
+	print("Loading product_info.csv...")
+	df_product = pd.read_csv("sephora_data/product_info.csv")
+	
+	# Step 3: Combine all review CSV files
+	print("Combining review files...")
+	review_files = glob.glob("sephora_data/reviews_*.csv")
+	df_reviews = pd.concat(
+	    [pd.read_csv(f, low_memory=False) for f in review_files], ignore_index=True
+	)
+	
+	# Step 4: Export directly to BigQuery
+	df_product.to_gbq(
+	    destination_table=f"{dataset_id}.product_info",
+	    project_id=project_id,
+	    if_exists="replace",
+	    location="US",
+	)
+	df_reviews.to_gbq(
+	    destination_table=f"{dataset_id}.reviews",
+	    project_id=project_id,
+	    if_exists="replace",
+	    location="US",
+	)
