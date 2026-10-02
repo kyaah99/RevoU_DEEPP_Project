@@ -1,0 +1,282 @@
+-- Phase 1: Import Dataset
+-- 1. Import sephora_dataset onto Google Colab
+-- 2. Combine all reviews.csv files into one csv file
+-- 3. Export sephora_dataset (both product_indo.csv & reviews.csv files) from Google Colab onto "revou-sql-class-jun26-510107" project on Big Query
+-- 4. Remove "Unnamed: 0" column from "reviews" table
+
+-- Phase 2: Data Cleaning - Duplicate Detection & Removal
+-- Step 1. Check for duplicates in "product_info" table
+-- SELECT 
+--   COUNT(*) AS total_rows,
+--   COUNT(DISTINCT product_id) AS unique_products,
+--   COUNT(*) - COUNT(DISTINCT product_id) AS duplicate_rows
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.product_info`;
+
+-- Step 2. Check for duplicates in "reviews" table
+-- SELECT 
+--   COUNT(*) AS total_rows,
+--   COUNT(DISTINCT author_id) AS unique_products,
+--   COUNT(*) - COUNT(DISTINCT author_id) AS duplicate_rows
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`;
+
+-- Step 3. Check duplicates in "reviews" table (same user reviewing the same product at the exact same time)
+-- SELECT 
+--   author_id,
+--   product_id,
+--   submission_time,
+--   COUNT(*) AS duplicate_count
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- GROUP BY author_id, product_id, submission_time
+-- HAVING COUNT(*) > 1;
+
+-- Step 4. Count total number of duplicate rows in "reviews" table
+-- WITH ranked_reviews AS (
+--   SELECT
+--     author_id,
+--     product_id,
+--     submission_time,
+--     ROW_NUMBER() OVER (
+--       PARTITION BY author_id, product_id, submission_time
+--       ORDER BY submission_time
+--     ) AS rn
+--   FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- )
+-- SELECT COUNT(*) AS total_duplicate_rows
+-- FROM ranked_reviews
+-- WHERE rn > 1;
+
+-- Step 5. Remove 1,040 duplicate rows from "reviews" table
+-- DELETE FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- WHERE (author_id, product_id, submission_time) IN (
+--   SELECT
+--     author_id, 
+--     product_id, 
+--     submission_time
+--   FROM (
+--     SELECT
+--       *,
+--       ROW_NUMBER() OVER (
+--         PARTITION BY author_id, product_id, submission_time
+--         ORDER BY submission_time
+--       ) AS rn
+--     FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+--   ) AS CTE
+--   WHERE rn > 1
+-- );
+-- DML alternative using Standard Subquery / CTE
+-- CREATE OR REPLACE TABLE `revou-sql-class-jun26-510107.sephora_dataset.reviews` AS
+-- WITH deduplicated AS (
+--   SELECT
+--     *,
+--     ROW_NUMBER() OVER (
+--       PARTITION BY author_id, product_id, submission_time
+--       ORDER BY submission_time
+--     ) AS rn
+--   FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- )
+-- SELECT * EXCEPT(rn)
+-- FROM deduplicated
+-- WHERE rn = 1;
+
+-- Step 6. Recheck total number of duplicate rows in "reviews" table after removal
+-- WITH ranked_reviews AS (
+--   SELECT
+--     author_id,
+--     product_id,
+--     submission_time,
+--     ROW_NUMBER() OVER (
+--       PARTITION BY author_id, product_id, submission_time
+--       ORDER BY submission_time
+--     ) AS rn
+--   FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- )
+-- SELECT COUNT(*) AS total_duplicate_rows
+-- FROM ranked_reviews
+-- WHERE rn > 1;
+
+-- Phase 2: Data Cleaning - Handling Missing Values
+-- Step 1. Check % of missing values in relevant columns of "product_info" table
+-- SELECT
+--   COUNT(*) AS total_rows,
+--   ROUND(COUNTIF(product_id IS NULL) * 100.0 / COUNT(*), 2) AS missing_product_id,
+--   ROUND(COUNTIF(price_usd IS NULL) * 100.0 / COUNT(*), 2) AS missing_price,
+--   ROUND(COUNTIF(sale_price_usd IS NULL) * 100.0 / COUNT(*), 2) AS missing_sale_price,
+--   ROUND(COUNTIF(primary_category IS NULL) * 100.0 / COUNT(*), 2) AS missing_category,
+--   ROUND(COUNTIF(ingredients IS NULL) * 100.0 / COUNT(*), 2) AS missing_ingredients
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.product_info`;
+
+-- Step 2. Check % of missing values in relevant columns of "reviews" table
+-- SELECT
+--   COUNT(*) AS total_rows,
+--   ROUND(COUNTIF(author_id IS NULL) * 100.0 / COUNT(*), 2) AS missing_author_id,
+--   ROUND(COUNTIF(product_id IS NULL) * 100.0 / COUNT(*), 2) AS missing_product_id,
+--   ROUND(COUNTIF(rating IS NULL) * 100.0 / COUNT(*), 2) AS missing_rating,
+--   ROUND(COUNTIF(skin_type IS NULL) * 100.0 / COUNT(*), 2) AS missing_skin_type
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`;
+
+-- Step 3. Impute missing values in "product_info" table
+-- CREATE OR REPLACE TABLE `revou-sql-class-jun26-510107.sephora_dataset.product_info` AS
+-- SELECT
+--   product_id,
+--   product_name,
+--   brand_id,
+--   brand_name,
+--   price_usd,
+--   size,
+--   variation_type,
+--   variation_value,
+--   variation_desc,
+--   limited_edition,
+--   `new`,
+--   online_only,
+--   out_of_stock,
+--   sephora_exclusive,
+--   child_count,
+--   child_max_price,
+--   child_min_price,
+--   COALESCE(loves_count, 0) AS loves_count,
+--   COALESCE(rating, 0.0) AS rating,
+--   COALESCE(reviews, 0) AS reviews,
+--   COALESCE(value_price_usd, price_usd) AS value_price_usd,
+--   COALESCE(sale_price_usd, price_usd) AS sale_price_usd,
+--   COALESCE(ingredients, 'Unknown') AS ingredients,
+--   COALESCE(highlights, 'None') AS highlights,
+--   COALESCE(primary_category, 'Unknown') AS primary_category,
+--   COALESCE(secondary_category, 'Unknown') AS secondary_category,
+--   COALESCE(tertiary_category, 'Unknown') AS tertiary_category
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.product_info`
+-- WHERE product_id IS NOT NULL;
+
+-- Step 4. Impute missing values in "reviews" table
+-- CREATE OR REPLACE TABLE `revou-sql-class-jun26-510107.sephora_dataset.reviews` AS
+-- SELECT
+--   author_id,
+--   product_id,
+--   product_name,
+--   brand_name,
+--   price_usd,
+--   submission_time,
+--   review_title,
+--   review_text,
+--   is_recommended,
+--   helpfulness,
+--   total_feedback_count,
+--   total_neg_feedback_count,
+--   total_pos_feedback_count,
+--   COALESCE(rating, 0.0) AS rating,
+--   COALESCE(skin_tone, 'Unknown') AS skin_tone,
+--   COALESCE(eye_color, 'Unknown') AS eye_color,
+--   COALESCE(skin_type, 'Unknown') AS skin_type,
+--   COALESCE(hair_color, 'Unknown') AS hair_color
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- WHERE author_id IS NOT NULL AND product_id IS NOT NULL;
+
+-- Phase 2: Data Cleaning - Outlier Identification & Treatment
+-- Step 1. IQR Method on "price_usd" column in "product_info" table
+-- WITH stats AS (
+--   SELECT
+--     MIN(price_usd) OVER() AS min_price,
+--     MAX(price_usd) OVER() AS max_price,
+--     ROUND(AVG(price_usd) OVER(), 2) AS avg_price,
+--     PERCENTILE_CONT(price_usd, 0.25) OVER() AS q1,
+--     PERCENTILE_CONT(price_usd, 0.50) OVER() AS median_p50,
+--     PERCENTILE_CONT(price_usd, 0.75) OVER() AS q3
+--   FROM `revou-sql-class-jun26-510107.sephora_dataset.product_info`
+--   LIMIT 1
+-- )
+-- SELECT
+--   min_price,
+--   max_price,
+--   avg_price,
+--   q1,
+--   median_p50,
+--   q3,
+--   (q3 - q1) AS iqr,
+--   (q1 - 1.5 * (q3 - q1)) AS lower_bound,
+--   (q3 + 1.5 * (q3 - q1)) AS upper_bound
+-- FROM stats;
+
+-- Step 2. Inspect products exceeding the $107.50 upper threshold
+-- SELECT
+--   product_id,
+--   product_name,
+--   brand_name,
+--   primary_category,
+--   price_usd
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.product_info`
+-- WHERE price_usd > 107.50
+-- ORDER BY price_usd DESC;
+
+-- Phase 2: Data Cleaning - Data Type Conversion & Standardization
+-- Step 1. Data Type Conversion & Outlier Flagging for "product_info"
+-- CREATE OR REPLACE TABLE `revou-sql-class-jun26-510107.sephora_dataset.clean_product_info` AS
+-- SELECT
+--   product_id,
+--   product_name,
+  
+--   -- INTEGER to STRING
+--   CAST(brand_id AS STRING) AS brand_id,
+--   brand_name,
+  
+--   -- FLOAT to NUMERIC
+--   SAFE_CAST(price_usd AS NUMERIC) AS price_usd,
+--   SAFE_CAST(value_price_usd AS NUMERIC) AS value_price_usd,
+--   SAFE_CAST(sale_price_usd AS NUMERIC) AS sale_price_usd,
+  
+--   size,
+--   variation_type,
+--   variation_value,
+--   variation_desc,
+  
+--   -- FLOAT to BOOLEAN
+--   SAFE_CAST(limited_edition AS INT64) = 1 AS limited_edition,
+--   `new`,
+--   SAFE_CAST(online_only AS INT64) = 1 AS online_only,
+--   SAFE_CAST(out_of_stock AS INT64) = 1 AS out_of_stock,
+--   SAFE_CAST(sephora_exclusive AS INT64) = 1 AS sephora_exclusive,
+  
+--   child_count,
+  
+--   -- FLOAT to NUMERIC
+--   SAFE_CAST(child_max_price AS NUMERIC) AS child_max_price,
+--   SAFE_CAST(child_min_price AS NUMERIC) AS child_min_price,
+  
+--   loves_count,
+--   rating,
+--   reviews,
+--   ingredients,
+--   highlights,
+--   primary_category,
+--   secondary_category,
+--   tertiary_category,
+
+--   -- Outlier Treatment Flag (> $107.50 upper bound)
+--   IF(SAFE_CAST(price_usd AS NUMERIC) > 107.50, TRUE, FALSE) AS is_price_outlier
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.product_info`;
+
+-- Step 2. Data Type Conversion for "reviews"
+-- CREATE OR REPLACE TABLE `revou-sql-class-jun26-510107.sephora_dataset.clean_reviews` AS
+-- SELECT
+--   author_id,
+--   product_id,
+--   product_name,
+--   brand_name,
+--   SAFE_CAST(price_usd AS NUMERIC) AS price_usd,
+  
+--   -- STRING to DATETIME (retains full timestamp)
+--   SAFE_CAST(submission_time AS DATETIME) AS submission_time,
+  
+--   review_title,
+--   review_text,
+--   SAFE_CAST(is_recommended AS INT64) = 1 AS is_recommended,
+--   helpfulness,
+--   total_feedback_count,
+--   total_neg_feedback_count,
+--   total_pos_feedback_count,
+--   rating,
+--   skin_tone,
+--   eye_color,
+--   skin_type,
+--   hair_color
+-- FROM `revou-sql-class-jun26-510107.sephora_dataset.reviews`
+-- ORDER BY submission_time ASC;
