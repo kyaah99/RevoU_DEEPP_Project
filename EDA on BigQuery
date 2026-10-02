@@ -1,0 +1,108 @@
+-- Phase 1: Baseline & Demand Signal Analysis (MECE Branch 3: Low Demand Signals)
+-- WITH category_totals AS (
+--   SELECT
+--     SUM(reviews) AS total_cat_reviews,
+--     SUM(loves_count) AS total_cat_loves,
+--     SUM(price_usd * reviews) AS total_cat_revenue_proxy
+--   FROM `sephora_dataset.clean_product_info`
+--   WHERE primary_category = 'Skincare'
+-- ),
+-- brand_metrics AS (
+--   SELECT
+--     brand_name,
+--     COUNT(DISTINCT product_id) AS total_skus,
+--     ROUND(AVG(rating), 2) AS avg_brand_rating,
+--     SUM(reviews) AS brand_reviews,
+--     SUM(loves_count) AS brand_loves,
+--     SUM(price_usd * reviews) AS brand_revenue_proxy
+--   FROM `sephora_dataset.clean_product_info`
+--   WHERE primary_category = 'Skincare'
+--   GROUP BY brand_name
+-- )
+-- SELECT
+--   b.brand_name,
+--   b.total_skus,
+--   b.avg_brand_rating,
+--   b.brand_reviews,
+--   b.brand_loves,
+--   ROUND((b.brand_reviews / c.total_cat_reviews) * 100, 2) AS reviews_share_pct,
+--   ROUND((b.brand_loves / c.total_cat_loves) * 100, 2) AS loves_share_pct,
+--   ROUND((b.brand_revenue_proxy / c.total_cat_revenue_proxy) * 100, 2) AS sales_contribution_pct
+-- FROM brand_metrics b
+-- CROSS JOIN category_totals c
+-- ORDER BY sales_contribution_pct DESC;
+
+-- Phase 2: Merchandising & Visibility Analysis (MECE Branch 2: Low Visibility)
+-- SELECT
+--   product_id,
+--   product_name,
+--   secondary_category,
+--   price_usd,
+--   rating,
+--   reviews,
+--   loves_count,
+--   sephora_exclusive,
+--   online_only,
+--   DENSE_RANK() OVER (
+--     PARTITION BY secondary_category 
+--     ORDER BY loves_count DESC
+--   ) AS category_loves_rank,
+--   DENSE_RANK() OVER (
+--     PARTITION BY secondary_category 
+--     ORDER BY reviews DESC
+--   ) AS category_reviews_rank
+-- FROM `sephora_dataset.clean_product_info`
+-- WHERE brand_name = 'Supergoop!'
+-- ORDER BY reviews DESC;
+
+-- Phase 3: Rating & Price/Value Gap Analysis (MECE Branch 1.2: Price/Value Gap)
+-- Step 3.1: SKU Performance & Rating Bucket Breakdown
+-- SELECT
+--   product_id,
+--   product_name,
+--   secondary_category,
+--   price_usd,
+--   rating,
+--   reviews,
+--   loves_count,
+--   CASE
+--     WHEN rating < 3.9 THEN 'Critical Drag (< 3.9)'
+--     WHEN rating BETWEEN 3.9 AND 4.19 THEN 'Needs Improvement (3.9 - 4.1)'
+--     ELSE 'Meeting Target (>= 4.2)'
+--   END AS rating_status
+-- FROM `sephora_dataset.clean_product_info`
+-- WHERE brand_name = 'Supergoop!'
+-- ORDER BY rating ASC, reviews DESC;
+
+-- Step 3.2: Price Tier vs. Rating Correlation
+-- SELECT
+--   CASE 
+--     WHEN price_usd < 25 THEN 'Under $25'
+--     WHEN price_usd BETWEEN 25 AND 45 THEN '$25 - $45'
+--     ELSE 'Over $45'
+--   END AS price_tier,
+--   COUNT(product_id) AS total_skus,
+--   ROUND(AVG(rating), 2) AS avg_rating,
+--   SUM(reviews) AS total_reviews
+-- FROM `sephora_dataset.clean_product_info`
+-- WHERE brand_name = 'Supergoop!'
+-- GROUP BY 1
+-- ORDER BY avg_rating ASC;
+
+-- Phase 4: Review Sentiment & Formulation Gaps (MECE Branch 1.1: Formulation Gaps)
+-- Step 4.1: Customer Feedback Breakdown by Reviewer Skin Type
+-- SELECT
+--   p.product_id,
+--   p.product_name,
+--   r.skin_type,
+--   COUNT(r.author_id) AS review_count,
+--   ROUND(AVG(r.rating), 2) AS avg_rating,
+--   ROUND(COUNTIF(r.is_recommended = TRUE) / COUNT(r.author_id) * 100, 2) AS recommendation_rate_pct
+-- FROM `sephora_dataset.clean_product_info` p
+-- JOIN `sephora_dataset.clean_reviews` r
+--   ON p.product_id = r.product_id
+-- WHERE p.brand_name = 'Supergoop!'
+--   AND p.rating < 4.2
+-- GROUP BY p.product_id, p.product_name, r.skin_type
+-- HAVING review_count >= 5
+-- ORDER BY avg_rating ASC;
