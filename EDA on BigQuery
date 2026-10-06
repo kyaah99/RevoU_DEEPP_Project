@@ -106,3 +106,25 @@
 -- GROUP BY p.product_id, p.product_name, r.skin_type
 -- HAVING review_count >= 5
 -- ORDER BY avg_rating ASC;
+
+-- Count how many Sephora exclusive SKUs that the Top 1 brand Dr.Jart+ has
+-- SELECT 
+--   COUNT(DISTINCT product_id) AS drjart_sephora_exclusive_sku_count
+-- FROM 
+--   `sephora_dataset.clean_product_info`
+-- WHERE 
+--   (brand_name = 'Dr. Jart+')
+--   AND (
+--     LOWER(CAST(sephora_exclusive AS STRING)) = 'true'
+--   );
+
+-- Count how many Sephora exclusive SKUs that the Top 1 brand Dr.Jart+ has
+-- SELECT 
+--   COUNT(DISTINCT product_id) AS drjart_sephora_exclusive_sku_count
+-- FROM 
+--   `sephora_dataset.clean_product_info`
+-- WHERE 
+--   (brand_name = 'Dr. Jart+')
+--   AND (
+--     LOWER(CAST(sephora_exclusive AS STRING)) = 'true'
+--   );
